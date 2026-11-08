@@ -152,6 +152,8 @@ class Agent:
 
         # TODO(1.1.a): Add machinery to maintain agent state as it takes actions
         # and observes the results.
+        self.history: list[dict[str, Any]] = [] #the assistant + tool result history
+
 
     def load_skills(self, skills_path: Path) -> dict[str, dict[str, str]]:
         """Load the skill folders exposed to this agent."""
@@ -227,7 +229,12 @@ class Agent:
 
         # You want to be careful about which attributes of the class you modify
         # here as they may also be handled by the subclasses.
-        raise NotImplementedError
+        return [
+        {"role": "system", "content": self.system_prompt},
+        {"role": "user", "content": self.task_prompt},
+        *self.history,
+    ]
+        
 
     def estimate_active_prompt_tokens(self) -> int:
         """Estimate the next prompt, calibrated by the provider's latest usage."""
@@ -330,13 +337,23 @@ class Agent:
             # step. Ensure you identify when the agent has completed the task
             # by setting `Agent.finished`. If the agent exceeds the
             # `step_limit`, raise `StepLimitError`.
+            while not self.finished:
+                if self.steps_taken >= self.step_limit:
+                    raise StepLimitError
 
+                msg = self.query_language_model()
+                self.history.append(msg)
+
+                tool_calls = msg.get("tool_calls", [])
+                if tool_calls:
+                    observations = self.execute_tool_calls(tool_calls)
+                    self.history.extend(observations)
             # TODO(2.2) Call `maybe_compact_context()` before each new action
             # request in your shared loop. It already estimates active tokens
             # and handles the threshold, and tracks compaction events for
             # logging.
 
-            raise NotImplementedError
+            
         finally:
             # This block is provided infrastructure. Do not modify it: a
             # trajectory is required even when a run fails.
