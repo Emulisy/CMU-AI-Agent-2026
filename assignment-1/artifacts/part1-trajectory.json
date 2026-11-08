@@ -1,0 +1,16 @@
+{
+  "prompts": [
+    [
+      {
+        "role": "system",
+        "content": "You are a coding agent that fixes software issues in a sandbox. Inspect the relevant files to understand the task, make focused changes, and run appropriate tests to verify the result. Use the execute tool to run commands and inspect their results before deciding what to do next. Base your conclusions on observed results rather than assuming commands succeeded.\n\n<system_information>\n{\n  \"machine\": \"x86_64\",\n  \"release\": \"4.19.0-gvisor\",\n  \"system\": \"Linux\",\n  \"version\": \"#1 SMP Sun Jan 10 15:06:54 PST 2016\"\n}\n</system_information>\n\nAvailable skills:\nname: submit-task\ndescription: When the task is complete, take the required steps to submit the solution.\n  DO NOT submit without invoking this skill.\n\nUse invoke_skill with the skill's name to load its full instructions before performing work covered by that skill."
+      },
+      {
+        "role": "user",
+        "content": "# Engine crashes after a game-ending human move\n\nThe chess API returns an internal server error when White makes a legal move\nthat immediately ends the game. For example, submitting `f7g7` from the\nposition below checkmates Black, but `POST /api/move` responds with HTTP 500:\n\n```text\n7k/5Q2/6K1/8/8/8/8/8 w - - 0 1\n```\n\nA game-ending move should return the final game state normally. The response\nshould report that the game is over, identify the result, and contain no engine\nreply. Normal non-terminal moves must continue to receive a deterministic\nengine response.\n\nTo reproduce the problem, run:\n\n```python\nfrom fastapi.testclient import TestClient\n\nfrom chess_app.game import ChessGame\nfrom chess_app.server import create_app\n\ngame = ChessGame()\ngame._board.set_fen(\"7k/5Q2/6K1/8/8/8/8/8 w - - 0 1\")\n\nwith TestClient(create_app(game), raise_server_exceptions=False) as client:\n    print(client.post(\"/api/move\", json={\"move\": \"f7g7\"}))\n```\n\nThis prints `<Response [500]>`. It should return 200 with the final state.\n"
+      }
+    ]
+  ],
+  "responses": [],
+  "compactions": []
+}
