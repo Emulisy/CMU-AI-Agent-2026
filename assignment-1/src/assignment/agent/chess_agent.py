@@ -107,9 +107,11 @@ class ChessAgent(Agent):
         )
 
         # TODO(Part 3): Register the play_move tool schema from tools.py.
+        self.tools.append(PLAY_MOVE_TOOL)
 
         if programmatic_tools:
             self.tools.append(RUN_PYTHON_TOOL)
+            self.tools.append(SIMULATE_MOVE_TOOL)
 
         # run_python always executes in the sandbox, on the port the chess
         # server is listening on there.
@@ -174,7 +176,49 @@ class ChessAgent(Agent):
         # 4. Link every observation to its call with tool_call_id.
         # 5. Turn malformed, unknown, rejected, or extra parallel calls into
         #    recoverable <chess_error> observations instead of crashing.
-
         # TODO(Part 3.3-4): add cases for simulate_move and run_python, with
-        # linked observations and recoverable errors, just like the old tool.
-        raise NotImplementedError
+        # linked observations and recoverable errors, just like play_move.
+        rtrn_msg: list[dict[str, str]] = []
+        moved = False
+        registered_names = {
+            item.get("function", {}).get("name") for item in self.tools
+        }
+
+        for tool in tool_calls:
+            try:
+                name = tool["function"]["name"]
+                args = tool["function"]["arguments"]
+                if name not in registered_names:
+                    raise ValueError(f"Tool {name!r} is not registered")
+
+                match name:
+                    case "play_move":
+                        if moved:
+                            raise ValueError(
+                                "Only one move may be attempted per assistant turn; "
+                                "inspect the returned board before choosing another"
+                            )
+                        if self.finished:
+                            raise ValueError("The game is already over")
+                        # Count the attempt even if the server rejects it: a
+                        # later parallel call must wait for a new observation.
+                        moved = True
+                        msg = _play_move(self.chess_client, args)
+                        if not msg.startswith("<chess_error>"):
+                            state = json.loads(msg)
+                            msg = self.format_state(state)
+                            self.last_state = state
+                            self.finished = bool(state.get("game_over"))
+                    case "simulate_move":
+                        msg = _simulate_move(self.chess_client, args)
+                    case _:
+                        raise ValueError(f"Tool {name!r} is not implemented yet")
+            except Exception as exc:
+                msg = f"<chess_error>{exc}</chess_error>"
+
+            rtrn_msg.append({
+                "role": "tool",
+                "tool_call_id": tool["id"],
+                "content": msg,
+            })
+        return rtrn_msg

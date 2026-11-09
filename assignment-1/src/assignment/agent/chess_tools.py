@@ -52,7 +52,26 @@ def _simulate_move(client: httpx.Client, arguments: str) -> str:
     # JSON arguments, arguments that are not an object, a missing or
     # non-string fen, a non-string move, a position or move the server rejects,
     # and a transport failure.
-    raise NotImplementedError
+    try:
+            args = json.loads(arguments)
+            if not isinstance(args, dict):
+                raise ValueError("simulate_move arguments must be a JSON object")
+            if set(args) not in [{"fen", "move"}, {"fen"}]:
+                raise ValueError("simulate_move requires one argument: fen and an optional argument: move")
+            
+            move = args.get("move")
+            fen = args["fen"]
+            if move is not None and not isinstance(move, str):
+                raise ValueError("move must be a UCI string or null")
+            if not isinstance(fen, str):
+                raise ValueError("Fen must be a string")
+    
+            state = _request_state(
+                client, "POST", "/api/simulate", json={"fen": fen, "move": move}
+            )
+            return json.dumps(state)
+    except Exception as exc:
+        return f"<chess_error>{exc}</chess_error>"
 
 
 def _play_move(client: httpx.Client, arguments: str) -> str:
@@ -67,7 +86,22 @@ def _play_move(client: httpx.Client, arguments: str) -> str:
     # for the agent to address. Cover malformed JSON arguments, arguments
     # that are not an object, a missing or non-string fen, a non-string move,
     # a position or move the server rejects, and a transport failure.
-    raise NotImplementedError
+    try:
+        args = json.loads(arguments)
+        if not isinstance(args, dict):
+            raise ValueError("play_move arguments must be a JSON object")
+        if args.keys() != {"move"}:
+            raise ValueError("play_move requires exactly one argument: move")
+        move = args["move"]
+        if not isinstance(move, str):
+            raise ValueError("move must be a UCI string")
+
+        state = _request_state(
+            client, "POST", "/api/move", json={"move": move}
+        )
+        return json.dumps(state)
+    except Exception as exc:
+        return f"<chess_error>{exc}</chess_error>"
 
 
 def _run_python(env: Any, port: int, arguments: str) -> str:

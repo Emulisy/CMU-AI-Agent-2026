@@ -124,6 +124,13 @@ class ChessSandbox(Environment):
 
         applied = self.execute("git apply -v /tmp/fix.diff", cwd=TESTBED)
         if applied["returncode"] != 0:
+            # Windows checkouts can be copied into the Linux image with CRLF
+            # endings, while reading the patch normalizes its lines to LF.
+            # Retry with whitespace-tolerant context matching for that case.
+            applied = self.execute(
+                "git apply --ignore-space-change -v /tmp/fix.diff", cwd=TESTBED
+            )
+        if applied["returncode"] != 0:
             raise RuntimeError(f"Patch did not apply:\n{applied['stderr'].strip()}")
 
     def _start_server(self, timeout: float) -> None:
