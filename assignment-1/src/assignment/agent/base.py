@@ -110,11 +110,24 @@ class Agent:
             raise RuntimeError("OPENAI_MAX_RETRIES must be an integer.") from exc
         if max_retries < 0:
             raise RuntimeError("OPENAI_MAX_RETRIES must be non-negative.")
+        try:
+            request_timeout = float(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60"))
+        except ValueError as exc:
+            raise RuntimeError("OPENAI_TIMEOUT_SECONDS must be a number.") from exc
+        if not math.isfinite(request_timeout) or request_timeout <= 0:
+            raise RuntimeError("OPENAI_TIMEOUT_SECONDS must be positive and finite.")
+        try:
+            self.deepseek_max_tokens = int(os.environ.get("DEEPSEEK_MAX_TOKENS", "8192"))
+        except ValueError as exc:
+            raise RuntimeError("DEEPSEEK_MAX_TOKENS must be an integer.") from exc
+        if self.deepseek_max_tokens <= 0:
+            raise RuntimeError("DEEPSEEK_MAX_TOKENS must be positive.")
 
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,
             max_retries=max_retries,
+            timeout=request_timeout,
         )
 
         self.logs_save_path = logs_save_path
@@ -253,13 +266,19 @@ class Agent:
             f"[agent] step {step_number}/{self.step_limit}: requesting action",
             flush=True,
         )
+        # Native DeepSeek uses max_tokens; max_completion_tokens may be ignored.
+        # Its "medium" effort maps to "high", so bound the reasoning as well.
+        generation_options = (
+            {"max_tokens": self.deepseek_max_tokens, "reasoning_effort": "low"}
+            if self.model in {"deepseek-flash", "deepseek-v4-pro"}
+            else {"max_completion_tokens": 4096, "reasoning_effort": "medium"}
+        )
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 tools=self.tools,
-                reasoning_effort="medium",
-                max_completion_tokens=4096,
+                **generation_options,
             )
         except Exception as exc:
             print(

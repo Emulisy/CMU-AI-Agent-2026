@@ -160,6 +160,43 @@ class ChessAgent(Agent):
 
         return format_chess_state(state, include_legal_moves=self.include_legal_moves)
 
+    def build_prompt(self) -> list[dict[str, Any]]:
+        """Remind a stalled model to act, using the last observed game state."""
+
+        messages = super().build_prompt()
+        if (
+            self.finished
+            or self.last_state.get("game_over")
+            or not self.history
+            or self.history[-1].get("role") != "assistant"
+            or self.history[-1].get("tool_calls")
+        ):
+            return messages
+
+        programmatic = any(
+            tool.get("function", {}).get("name") == "run_python"
+            for tool in self.tools
+        )
+        next_action = (
+            "Use run_python to plan and commit one move, following any loaded skill."
+            if programmatic
+            else "Call play_move with one White move in UCI notation."
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "Your last response did not invoke a tool. The last observed "
+                    "server state below is not terminal; only the server's "
+                    "game_over field determines whether the game has ended. "
+                    "Keep reasoning concise and produce a tool call instead of "
+                    "commentary or a claim that the game has concluded. "
+                    f"{next_action}\n\n{self.format_state(self.last_state)}"
+                ),
+            }
+        )
+        return messages
+
     def execute_tool_calls(
         self, tool_calls: list[dict[str, Any]]
     ) -> list[dict[str, str]]:
