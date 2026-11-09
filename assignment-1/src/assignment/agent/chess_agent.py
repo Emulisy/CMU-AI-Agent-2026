@@ -211,10 +211,50 @@ class ChessAgent(Agent):
                             self.finished = bool(state.get("game_over"))
                     case "simulate_move":
                         msg = _simulate_move(self.chess_client, args)
+                    case "run_python":
+                        if moved:
+                            raise ValueError(
+                                "Only one live-action tool may run per assistant turn; "
+                                "inspect the returned board before choosing another"
+                            )
+                        moved = True
+                        msg = _run_python(self.env, self.python_sandbox_port, args)
+                        # A snippet can commit a move before reporting an error,
+                        # so refresh even when the runner reports a failure.
+                        try:
+                            state = _game_state(self.chess_client)
+                            formatted_state = self.format_state(state)
+                            self.last_state = state
+                            self.finished = bool(state.get("game_over"))
+                            msg += "\n\n" + formatted_state
+                        except Exception as exc:
+                            # Keep the runner output if the board refresh fails.
+                            msg += (
+                                "\n\n<chess_error>Could not refresh the live board: "
+                                f"{exc}</chess_error>"
+                            )
+                    case "invoke_skill":
+                        msg = _invoke_skill(self.skills, args)
                     case _:
                         raise ValueError(f"Tool {name!r} is not implemented yet")
             except Exception as exc:
                 msg = f"<chess_error>{exc}</chess_error>"
+
+            # Confirm a shutdown after a tool failure. A failed liveness check
+            # alone is inconclusive, so transient network errors stay recoverable.
+            # Keep the fatal raise outside the recovery block above.
+            if "<chess_error>" in msg:
+                is_alive = getattr(self.env, "is_alive", None)
+                if callable(is_alive):
+                    try:
+                        sandbox_alive = is_alive()
+                    except Exception:
+                        sandbox_alive = None
+                    if sandbox_alive is False:
+                        raise RuntimeError(
+                            "Chess sandbox has stopped; aborting the agent run "
+                            "instead of retrying unavailable tools."
+                        )
 
             rtrn_msg.append({
                 "role": "tool",

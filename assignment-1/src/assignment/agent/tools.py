@@ -194,4 +194,34 @@ SIMULATE_MOVE_TOOL: dict = {
 }
 
 # TODO()
-RUN_PYTHON_TOOL: dict = {}
+RUN_PYTHON_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "run_python",
+        "description": (
+            "Run Python code inside the chess sandbox. The code can call "
+            "simulate_move(fen, move=None) to inspect hypothetical positions "
+            "and play_move(move) to commit a move to the live game. These "
+            "functions are synchronous and return dictionaries. Use simulation "
+            "to search before committing at most one live move per call. "
+            "Returns captured stdout, stderr, and any Python execution error; "
+            "the observation also includes the refreshed live game state."
+        ),
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": (
+                        "Python source code to execute in the sandbox, using "
+                        "simulate_move and play_move as needed. Use print() "
+                        "to include results in stdout."
+                    ),
+                },
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+}
